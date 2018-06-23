@@ -4,14 +4,13 @@ author: Nader"""
 
 import asyncio
 from datetime import time
-
 from balebot.filters import *
 from balebot.handlers import MessageHandler
 from balebot.models.messages import *
 from balebot.updater import Updater
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from . import Notification
+from ai.bale.bot.notification import Notification
 
 
 updater = Updater(token="",

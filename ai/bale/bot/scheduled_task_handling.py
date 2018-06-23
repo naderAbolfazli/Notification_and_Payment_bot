@@ -4,13 +4,11 @@ author: Nader"""
 
 import _thread
 import asyncio
-
 import schedule
 from balebot.updater import Updater
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import session
-
-from . import Notification
+from ai.bale.bot.notification import Notification
 
 updater = Updater(token="",
                   loop=asyncio.get_event_loop())
@@ -22,7 +20,7 @@ Base = declarative_base()
 
 
 def db_pushing():
-    within_hour_notif = session.query(Notification)
+    within_hour_notif = session.query(notification)
     pass
 
 
