@@ -3,40 +3,28 @@ for Bale
 author: Nader"""
 
 import asyncio
-import datetime
+from datetime import time
 
 from balebot.filters import *
-from balebot.handlers import MessageHandler, CommandHandler
+from balebot.handlers import MessageHandler
 from balebot.models.messages import *
 from balebot.updater import Updater
-from sqlalchemy import *
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import sessionmaker
+from . import Notification
+
 
 updater = Updater(token="",
                   loop=asyncio.get_event_loop())
 bot = updater.bot
 dispatcher = updater.dispatcher
 
-Base = declarative_base()
-
-
-class Notifications(Base):
-    __tablename__ = 'notifications'
-    id = Column(Integer, primary_key=True)
-    user_id = Column(String, nullable=False)
-    time = Column(Time, nullable=False)
-    interval = Column(Integer, nullable=False)
-    name = Column(String)
-    stopper = Column(String)
-    file_id = Column(String)
-    access_hash = Column(String)
-
 
 engine = create_engine('postgresql://postgres:nader1993@localhost:5432/testdb')
+Session = sessionmaker(bind=engine)
+session = Session()
 
-Base.metadata.create_all(engine)
+Notification.metadata.create_all(engine)
 
 
 def success(response, user_data):
@@ -49,63 +37,57 @@ def failure(response, user_data):
     print(user_data.get())
 
 
-def final_download_success(result, user_data):
-    print("download was successful : ", result)
-    stream = user_data.get("byte_stream", None)
-    print(type(stream))
-    info = user_data["kwargs"]
-    print(info["user_id"])
-
-    with open("../files/notification_photo_" + info["user_id"] + "_" + info["notification_name"], "wb") as file:
-        file.write(stream)
-        file.close()
-
-
 notification = {}
 
 
 @dispatcher.command_handler(["/start"])
 def conversation_starter(bot, update):
-    general_message = TextMessage("انتخاب سرویس")
-    btn_list = [TemplateMessageButton("هشدار", "هشدار", 0),
+    general_message = TextMessage("انتخاب نوع هشدار")
+    btn_list = [TemplateMessageButton("عادی", "عادی", 0),
                 TemplateMessageButton("بدهی", "بدهی", 0)]
     message = TemplateMessage(general_message=general_message, btn_list=btn_list)
     bot.respond(update, message, success_callback=success, failure_callback=failure)
     dispatcher.register_conversation_next_step_handler(update, [
-        MessageHandler(TemplateResponseFilter(keywords=["هشدار"]),
-                       notification_menu),
-        MessageHandler(TemplateResponseFilter(keywords=["بدهی"]),
-                       create_debit)])
+        MessageHandler(TemplateResponseFilter(keywords=["عادی"]), ask_time),
+        MessageHandler(TemplateResponseFilter(keywords=["بدهی"]), ask_time)])
 
 
-def notification_menu(bot, update):
-    general_message = TextMessage("انتخاب کنید")
-    btn_list = [TemplateMessageButton("ایجاد", "ایجاد", 0),
-                TemplateMessageButton("حذف", "حذف", 0),
-                TemplateMessageButton("تغییر", "تغییر", 0)]
-    message = TemplateMessage(general_message=general_message, btn_list=btn_list)
-    bot.respond(update, message, success_callback=success, failure_callback=failure)
+def wrong_type(bot, update):
+    bot.respond(update, TextMessage("جواب نامناسب"))
     dispatcher.register_conversation_next_step_handler(update, [
-        MessageHandler(TemplateResponseFilter(keywords=["ایجاد"]),
-                       create_notification),
-        MessageHandler(TemplateResponseFilter(keywords=["حذف"]),
-                       notification_menu),
-        MessageHandler(TemplateResponseFilter(keywords=["تغییر"]),
-                       notification_menu)])
+        MessageHandler(TemplateResponseFilter(keywords=["عادی"]), ask_time),
+        MessageHandler(TemplateResponseFilter(keywords=["بدهی"]), ask_time)])
 
 
-def create_notification(bot, update):
-    bot.respond(update, TextMessage("time:\nexample: 13:20"))
+# def notification_menu(bot, update):
+#     general_message = TextMessage("انتخاب کنید")
+#     btn_list = [TemplateMessageButton("ایجاد", "ایجاد", 0),
+#                 TemplateMessageButton("حذف", "حذف", 0),
+#                 TemplateMessageButton("تغییر", "تغییر", 0)]
+#     message = TemplateMessage(general_message=general_message, btn_list=btn_list)
+#     bot.respond(update, message, success_callback=success, failure_callback=failure)
+#     dispatcher.register_conversation_next_step_handler(update, [
+#         MessageHandler(TemplateResponseFilter(keywords=["ایجاد"]),
+#                        create_notification),
+#         MessageHandler(TemplateResponseFilter(keywords=["حذف"]),
+#                        notification_menu),
+#         MessageHandler(TemplateResponseFilter(keywords=["تغییر"]),
+#                        notification_menu)])
+
+
+def ask_time(bot, update):
+    notification["type"] = "عادی"
+    bot.respond(update, TextMessage("زمان:\nنمونه(۱۳:۲۰)"))
     dispatcher.register_conversation_next_step_handler(update, [
-        MessageHandler(TextFilter(pattern=""), ask_picture),
-        MessageHandler(DefaultFilter(), incorrect_time)])
+        MessageHandler(TextFilter(pattern="^([0-1][0-9]|2[0-3]):[0-5][0-9]$"), ask_picture),
+        MessageHandler(DefaultFilter(), wrong_time)])
 
 
-def incorrect_time(bot, update):
+def wrong_time(bot, update):
     bot.respond(update, TextMessage("فرمت وارد شده صحیح نیست مجدد وارد کنید"))
     dispatcher.register_conversation_next_step_handler(update, [
-        MessageHandler(TextFilter(pattern=""), ask_picture),
-        MessageHandler(DefaultFilter(), incorrect_time)])
+        MessageHandler(TextFilter(pattern="^([0-1][0-9]|2[0-3]):[0-5][0-9]$"), ask_picture),
+        MessageHandler(DefaultFilter(), wrong_time)])
 
 
 def ask_picture(bot, update):
@@ -162,8 +144,8 @@ def ask_stopper(bot, update):
 def wrong_stopper_response(bot, update):
     bot.respond(update, TextMessage("جواب نامناسب. لطفا متن وارد کنید"), success, failure)
     dispatcher.register_conversation_next_step_handler(update,
-                                                       [MessageHandler(TextFilter(), finnish_notification_register()),
-                                                        MessageHandler(DefaultFilter(), wrong_name_response)])
+                                                       [MessageHandler(TextFilter(), finnish_notification_register),
+                                                        MessageHandler(DefaultFilter(), wrong_stopper_response)])
 
 
 def finnish_notification_register(bot, update):
@@ -178,6 +160,12 @@ def finnish_notification_register(bot, update):
         message = TextMessage(notification["name"])
     bot.respond(update, message, success, failure)
     print(notification)
+    ntime = notification["time"]
+    reg_notif = Notification(notification["user_id"], time(hour=int(ntime[:2]), minute=int(ntime[3:4])*10, second=0),
+                             notification["type"], notification["interval"], notification["name"],
+                             notification["stopper"], notification["file_id"], notification["access_hash"])
+    session.add(reg_notif)
+    session.commit()
     notification.clear()
     dispatcher.finish_conversation(update)
 
