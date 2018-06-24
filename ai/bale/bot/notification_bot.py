@@ -14,7 +14,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from ai.bale.bot.notification import Notification
 
-updater = Updater(token="0f8c34cd08e81d3604f23f712a095f167dfc37d8",
+updater = Updater(token="",
                   loop=asyncio.get_event_loop())
 bot = updater.bot
 dispatcher = updater.dispatcher
