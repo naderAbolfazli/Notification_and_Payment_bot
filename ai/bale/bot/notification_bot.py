@@ -6,18 +6,18 @@ import asyncio
 from datetime import time
 from balebot.filters import *
 from balebot.handlers import MessageHandler
+from balebot.models.base_models import UserPeer, Peer
+from balebot.models.constants.peer_type import PeerType
 from balebot.models.messages import *
 from balebot.updater import Updater
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from ai.bale.bot.notification import Notification
 
-
-updater = Updater(token="",
+updater = Updater(token="0f8c34cd08e81d3604f23f712a095f167dfc37d8",
                   loop=asyncio.get_event_loop())
 bot = updater.bot
 dispatcher = updater.dispatcher
-
 
 engine = create_engine('postgresql://postgres:nader1993@localhost:5432/testdb')
 Session = sessionmaker(bind=engine)
@@ -33,7 +33,7 @@ def success(response, user_data):
 
 def failure(response, user_data):
     print("failure : ", response)
-    print(user_data.get())
+    print(user_data)
 
 
 notification = {}
@@ -98,8 +98,9 @@ def ask_picture(bot, update):
 
 def getting_picture(bot, update):
     notification["file_id"] = update.body.message.file_id
-    notification["access_hash"] = update.body.message.access_hash
+    notification["file_access_hash"] = update.body.message.access_hash
     notification["user_id"] = update.body.sender_user.peer_id
+    notification["peer_access_hash"] = update.body.sender_user.access_hash
     bot.respond(update, TextMessage("متن هشدار:"), success, failure)
     dispatcher.register_conversation_next_step_handler(update, [MessageHandler(TextFilter(), ask_interval),
                                                                 MessageHandler(DefaultFilter(), wrong_name_response)])
@@ -151,7 +152,8 @@ def finnish_notification_register(bot, update):
     notification["stopper"] = update.get_effective_message().text
     bot.respond(update, TextMessage("هشدار با موفقیت ثبت شد(نمونه پیام)"), success, failure)
     if notification.__contains__("file_id"):
-        message = PhotoMessage(file_id=notification["file_id"], access_hash=notification["access_hash"], name="Hoshdar",
+        message = PhotoMessage(file_id=notification["file_id"], access_hash=notification["file_access_hash"],
+                               name="Hoshdar",
                                file_size='11337',
                                mime_type="image/jpeg", caption_text=TextMessage(notification["name"]),
                                file_storage_version=1, thumb=None)
@@ -159,13 +161,17 @@ def finnish_notification_register(bot, update):
         message = TextMessage(notification["name"])
     bot.respond(update, message, success, failure)
     print(notification)
-    ntime = notification["time"]
-    reg_notif = Notification(notification["user_id"], time(hour=int(ntime[:2]), minute=int(ntime[3:4])*10, second=0),
+    reg_notif = Notification(notification["user_id"], notification["peer_access_hash"], notification["time"],
                              notification["type"], notification["interval"], notification["name"],
-                             notification["stopper"], notification["file_id"], notification["access_hash"])
+                             notification["stopper"], notification["file_id"], notification["file_access_hash"])
     session.add(reg_notif)
     session.commit()
     notification.clear()
+
+    general_message = TextMessage(" ")
+    btn_list = [TemplateMessageButton("پایان", "پایان", 0)]
+    tmessage = TemplateMessage(general_message=general_message, btn_list=btn_list)
+    bot.respond(update, tmessage, success_callback=success, failure_callback=failure)
     dispatcher.finish_conversation(update)
 
 
