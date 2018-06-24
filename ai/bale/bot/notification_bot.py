@@ -3,18 +3,17 @@ for Bale
 author: Nader"""
 
 import asyncio
-from datetime import time
+
 from balebot.filters import *
 from balebot.handlers import MessageHandler
-from balebot.models.base_models import UserPeer, Peer
-from balebot.models.constants.peer_type import PeerType
 from balebot.models.messages import *
 from balebot.updater import Updater
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
 from ai.bale.bot.notification import Notification
 
-updater = Updater(token="",
+updater = Updater(token="0f8c34cd08e81d3604f23f712a095f167dfc37d8",
                   loop=asyncio.get_event_loop())
 bot = updater.bot
 dispatcher = updater.dispatcher

@@ -10,6 +10,7 @@ import time
 from threading import Thread
 
 import schedule
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from balebot.filters import DefaultFilter
 from balebot.models.base_models import UserPeer, Peer
 from balebot.models.constants.peer_type import PeerType
@@ -21,10 +22,13 @@ from sqlalchemy.orm import sessionmaker
 from ai.bale.bot.notification import Notification
 from ai.bale.bot.stoppable_thread import StoppableThread
 
-updater = Updater(token="",
-                  loop=asyncio.get_event_loop())
+updater_loop = asyncio.get_event_loop()
+updater = Updater(token="0f8c34cd08e81d3604f23f712a095f167dfc37d8",
+                  loop=updater_loop)
 bot = updater.bot
 dispatcher = updater.dispatcher
+
+scheduler = AsyncIOScheduler()
 
 engine = create_engine('postgresql://postgres:nader1993@localhost:5432/testdb')
 Session = sessionmaker(bind=engine)
@@ -58,7 +62,6 @@ def db_pushing():
 
 def job(notification):
     user_peer = Peer(PeerType.user, notification.user_id, notification.peer_access_hash)
-    # print("hi job " + notification.user_id, notification.peer_access_hash)
     if notification.file_id:
         message = PhotoMessage(file_id=notification.file_id, access_hash=notification.file_access_hash,
                                name="Hoshdar",
@@ -72,36 +75,35 @@ def job(notification):
         send_notification, message, user_peer, notification.interval, notification.stopper))
 
 
-def notification_thread_starting(message, user_peer, interval):
-    while True:
-        bot.send_message(message=message, peer=user_peer, success_callback=success, failure_callback=failure)
-        # print(user_peer.peer_id + " " + message.)
-        time.sleep(interval)
+def sending_message(message, user_peer):
+    bot.send_message(message=message, peer=user_peer, success_callback=success, failure_callback=failure)
+
+
+async def sending_message_canceler(iter_job, peer_id, stopper):
+    while jobStopper[peer_id] != stopper:
+        await asyncio.sleep(3)
+    schedule.cancel_job(iter_job)
+    print("job canceled")
 
 
 def send_notification(message, user_peer, interval, stopper):
     jobStopper[user_peer.peer_id] = ""
-    # notif_thread = StoppableThread(target=notification_thread_starting, args=(message, user_peer, interval))
-    # notif_thread.start()
+    iter_job = schedule.every(interval).seconds.do(functools.partial(sending_message, message, user_peer))
+    # stopper_thread = threading.Thread(target=sending_message_canceler, args=(iter_job, user_peer.peer_id, stopper))
+    # stopper_thread.start()
+    sending_message_canceler(iter_job, user_peer.peer_id, stopper)
     print("job started")
-    while jobStopper[user_peer.peer_id] != stopper:
-        bot.send_message(message=message, peer=user_peer, success_callback=success, failure_callback=failure)
-        time.sleep(interval)
-    print("job canceled")
-    # notif_thread.stop()
     return schedule.CancelJob
 
 
 def schedule_loop():
     while True:
         schedule.run_pending()
-        time.sleep(1)
+        time.sleep(2)
 
 
-# schedule.every(2).seconds.do(job)
 db_pushing()
 # schedule.every().hour.do(db_pushing)
-# db_pushing()
 
 sch_thread = threading.Thread(target=schedule_loop, )
 sch_thread.start()
