@@ -2,37 +2,29 @@
 for Bale
 author: Nader"""
 
-import _thread
 import asyncio
 import functools
 import threading
 import time
-from threading import Thread
 
 import schedule
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from balebot.filters import DefaultFilter
-from balebot.models.base_models import UserPeer, Peer
+from balebot.models.base_models import Peer
 from balebot.models.constants.peer_type import PeerType
+from balebot.models.messages import *
 from balebot.models.messages.banking.money_request_type import MoneyRequestType
 from balebot.updater import Updater
-from balebot.models.messages import *
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from ai.bale.bot.notification import Notification
-from ai.bale.bot.stoppable_thread import StoppableThread
 
-updater_loop = asyncio.get_event_loop()
-updater = Updater(token="",
-                  loop=updater_loop)
+from ai.bale.bot.base import Session, engine, Base
+from ai.bale.bot.message import Message
+from ai.bale.bot.notification import Notification
+
+updater = Updater(token="0f8c34cd08e81d3604f23f712a095f167dfc37d8",
+                  loop=asyncio.get_event_loop())
 bot = updater.bot
 dispatcher = updater.dispatcher
 
-scheduler = AsyncIOScheduler()
-
-engine = create_engine('postgresql://postgres:nader1993@localhost:5432/testdb')
-Session = sessionmaker(bind=engine)
+Base.metadata.create_all(engine)
 session = Session()
 
 jobStopper = {}
@@ -55,10 +47,16 @@ def stopper_handler(bot, update):
     jobStopper[peer_id] = message
 
 
-def db_pushing():
-    notifications = session.query(Notification).all()  # notifications within an hour
-    for notification in notifications:
-        job(notification)
+async def custom_sleep(delay):
+    await asyncio.sleep(delay)
+
+
+async def db_pushing():
+    while True:
+        notifications = session.query(Notification).all()  # notifications within an hour
+        for notification in notifications:
+            threading.Thread(target=job, args=(notification,)).start()
+        await asyncio.sleep(10)
 
 
 def job(notification):
@@ -77,9 +75,16 @@ def job(notification):
     else:
         final_message = message
 
-    # bot.send_message(final_message, user_peer, success_callback=success, failure_callback=failure)
-    schedule.every().day.at(str(notification.time)[:5]).do(functools.partial(
-        send_notification, final_message, user_peer, notification.interval, notification.stopper))
+    # schedule.every(str(notification.time)[0:5]).day.do(functools.partial(
+    #     send_notification_task, final_message, user_peer, notification.interval, notification.stopper))
+    # time_dif = notification.time - datetime.time
+    # print(datetime.datetime.now().minute)
+    # time.sleep(10)
+    message_object = Message(notification)
+    session.add(message_object)
+    session.commit()
+    bot.send_message(final_message, user_peer, success_callback=success, failure_callback=failure)
+    send_notification_task(final_message, user_peer, notification.interval, notification.stopper)
 
 
 def sending_message(message, user_peer):
@@ -93,14 +98,14 @@ def sending_message_canceler(iter_job, peer_id, stopper):
     print("job canceled")
 
 
-def send_notification(message, user_peer, interval, stopper):
+def send_notification_task(message, user_peer, interval, stopper):
     jobStopper[user_peer.peer_id] = ""
     iter_job = schedule.every(interval).seconds.do(functools.partial(sending_message, message, user_peer))
     stopper_thread = threading.Thread(target=sending_message_canceler, args=(iter_job, user_peer.peer_id, stopper))
     stopper_thread.start()
     # sending_message_canceler(iter_job, user_peer.peer_id, stopper)
     print("job started")
-    return schedule.CancelJob
+    # return schedule.CancelJob
 
 
 def schedule_loop():
@@ -109,10 +114,29 @@ def schedule_loop():
         time.sleep(1)
 
 
-sch_thread = threading.Thread(target=schedule_loop, )
+def loop_forever():
+    iloop = asyncio.new_event_loop()
+    asyncio.set_event_loop(iloop)
+    iloop.create_task(db_pushing())
+    iloop.run_forever()
+
+
+def updater_run():
+    updater.run()
+
+
+# loop = asyncio.get_event_loop()
+# loop.create_task()
+# tasks = [asyncio.ensure_future(db_pushing())]
+         # asyncio.ensure_future(updater_run())]
+# loop.call_later(300, db_pushing())
+
+sch_thread = threading.Thread(target=loop_forever, args=())
 sch_thread.start()
 
-db_pushing()
-# schedule.every().hour.do(db_pushing)
+# schedule.every(10).seconds.do(db_pushing)
+
+# db_pushing()
+
 
 updater.run()
