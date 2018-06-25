@@ -14,6 +14,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from balebot.filters import DefaultFilter
 from balebot.models.base_models import UserPeer, Peer
 from balebot.models.constants.peer_type import PeerType
+from balebot.models.messages.banking.money_request_type import MoneyRequestType
 from balebot.updater import Updater
 from balebot.models.messages import *
 from sqlalchemy import create_engine
@@ -23,7 +24,7 @@ from ai.bale.bot.notification import Notification
 from ai.bale.bot.stoppable_thread import StoppableThread
 
 updater_loop = asyncio.get_event_loop()
-updater = Updater(token="0f8c34cd08e81d3604f23f712a095f167dfc37d8",
+updater = Updater(token="",
                   loop=updater_loop)
 bot = updater.bot
 dispatcher = updater.dispatcher
@@ -49,9 +50,9 @@ def failure(response, user_data):
 
 @dispatcher.message_handler([DefaultFilter()])
 def stopper_handler(bot, update):
-    user_id = update.get_effective_user().peer_id
+    peer_id = update.get_effective_user().peer_id
     message = update.get_effective_message().text
-    jobStopper[user_id] = message
+    jobStopper[peer_id] = message
 
 
 def db_pushing():
@@ -61,8 +62,8 @@ def db_pushing():
 
 
 def job(notification):
-    user_peer = Peer(PeerType.user, notification.user_id, notification.peer_access_hash)
-    if notification.file_id:
+    user_peer = Peer(PeerType.user, notification.peer_id, notification.peer_access_hash)
+    if notification.file_id is not None:
         message = PhotoMessage(file_id=notification.file_id, access_hash=notification.file_access_hash,
                                name="Hoshdar",
                                file_size='11337',
@@ -70,18 +71,24 @@ def job(notification):
                                file_storage_version=1, thumb=None)
     else:
         message = TextMessage(notification.name)
+    if notification.type == "بدهی":
+        final_message = PurchaseMessage(msg=message, account_number=notification.card_number, amount=notification.money,
+                                        money_request_type=MoneyRequestType.normal)
+    else:
+        final_message = message
 
+    # bot.send_message(final_message, user_peer, success_callback=success, failure_callback=failure)
     schedule.every().day.at(str(notification.time)[:5]).do(functools.partial(
-        send_notification, message, user_peer, notification.interval, notification.stopper))
+        send_notification, final_message, user_peer, notification.interval, notification.stopper))
 
 
 def sending_message(message, user_peer):
     bot.send_message(message=message, peer=user_peer, success_callback=success, failure_callback=failure)
 
 
-async def sending_message_canceler(iter_job, peer_id, stopper):
+def sending_message_canceler(iter_job, peer_id, stopper):
     while jobStopper[peer_id] != stopper:
-        await asyncio.sleep(3)
+        time.sleep(1)
     schedule.cancel_job(iter_job)
     print("job canceled")
 
@@ -89,9 +96,9 @@ async def sending_message_canceler(iter_job, peer_id, stopper):
 def send_notification(message, user_peer, interval, stopper):
     jobStopper[user_peer.peer_id] = ""
     iter_job = schedule.every(interval).seconds.do(functools.partial(sending_message, message, user_peer))
-    # stopper_thread = threading.Thread(target=sending_message_canceler, args=(iter_job, user_peer.peer_id, stopper))
-    # stopper_thread.start()
-    sending_message_canceler(iter_job, user_peer.peer_id, stopper)
+    stopper_thread = threading.Thread(target=sending_message_canceler, args=(iter_job, user_peer.peer_id, stopper))
+    stopper_thread.start()
+    # sending_message_canceler(iter_job, user_peer.peer_id, stopper)
     print("job started")
     return schedule.CancelJob
 
@@ -99,13 +106,13 @@ def send_notification(message, user_peer, interval, stopper):
 def schedule_loop():
     while True:
         schedule.run_pending()
-        time.sleep(2)
+        time.sleep(1)
 
-
-db_pushing()
-# schedule.every().hour.do(db_pushing)
 
 sch_thread = threading.Thread(target=schedule_loop, )
 sch_thread.start()
+
+db_pushing()
+# schedule.every().hour.do(db_pushing)
 
 updater.run()
