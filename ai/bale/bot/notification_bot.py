@@ -9,9 +9,8 @@ from balebot.handlers import MessageHandler
 from balebot.models.messages import *
 from balebot.models.messages.banking.money_request_type import MoneyRequestType
 from balebot.updater import Updater
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
+from ai.bale.bot.base import Base, engine, Session
 from ai.bale.bot.notification import Notification
 from ai.bale.bot.time_period import TimePeriod, DayNumber
 
@@ -20,11 +19,9 @@ updater = Updater(token="0f8c34cd08e81d3604f23f712a095f167dfc37d8",
 bot = updater.bot
 dispatcher = updater.dispatcher
 
-engine = create_engine('postgresql://postgres:nader1993@localhost:5432/testdb')
-Session = sessionmaker(bind=engine)
+Base.metadata.create_all(engine)
 session = Session()
 
-Notification.metadata.create_all(engine)
 
 
 def success(response, user_data):
@@ -44,6 +41,7 @@ time_period = TimePeriod()
 @dispatcher.command_handler(["/start"])
 def conversation_starter(bot, update):
     global notification
+    global time_period
     notification = Notification()
     notification.peer_id = update.body.sender_user.peer_id
     notification.peer_access_hash = update.body.sender_user.access_hash
@@ -55,26 +53,28 @@ def conversation_starter(bot, update):
     bot.respond(update, message, success_callback=success, failure_callback=failure)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=["عادی"]), periodic_state),
-        MessageHandler(TemplateResponseFilter(keywords=["بدهی"]), ask_card_number)])
+        MessageHandler(TemplateResponseFilter(keywords=["بدهی"]), ask_card_number),
+        MessageHandler(DefaultFilter(), wrong_type)])
 
 
 def wrong_type(bot, update):
-    bot.respond(update, TextMessage("جواب نامناسب"))
+    bot.respond(update, "جواب نامناسب", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=["عادی"]), periodic_state),
-        MessageHandler(TemplateResponseFilter(keywords=["بدهی"]), ask_card_number)])
+        MessageHandler(TemplateResponseFilter(keywords=["بدهی"]), ask_card_number),
+        MessageHandler(DefaultFilter(), wrong_type)])
 
 
 def ask_card_number(bot, update):
     notification.type = "بدهی"
-    bot.respond(update, TextMessage("شماره کارت فرد مورد نظر را وارد کنید:"))
+    bot.respond(update, "شماره کارت فرد مورد نظر را وارد کنید:", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern="^[0-9]{16}$"), ask_amount),
         MessageHandler(DefaultFilter(), wrong_card_number)])
 
 
 def wrong_card_number(bot, update):
-    bot.respond(update, TextMessage("فرمت شماره کارت صحیح نمیباشد:"))
+    bot.respond(update, "فرمت شماره کارت صحیح نمیباشد:", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern="^[0-9]{16}$"), ask_amount),
         MessageHandler(DefaultFilter(), wrong_card_number)])
@@ -82,7 +82,7 @@ def wrong_card_number(bot, update):
 
 def ask_amount(bot, update):
     notification.card_number = update.get_effective_message().text
-    bot.respond(update, TextMessage("مبلغ را به ریال وارد کنید:"))
+    bot.respond(update, "مبلغ را به ریال وارد کنید:", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern="^[0-9]+"), periodic_state),
         MessageHandler(DefaultFilter(), wrong_amount)
@@ -90,27 +90,13 @@ def ask_amount(bot, update):
 
 
 def wrong_amount(bot, update):
-    bot.respond(update, TextMessage("جواب نامناسب لطفا عدد وارد کنید:"))
+    bot.respond(update, "جواب نامناسب لطفا عدد وارد کنید:", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern="^[0-9]+"), periodic_state),
         MessageHandler(DefaultFilter(), wrong_amount)
     ])
 
 
-# def notification_menu(bot, update):
-#     general_message = TextMessage("انتخاب کنید")
-#     btn_list = [TemplateMessageButton("ایجاد", "ایجاد", 0),
-#                 TemplateMessageButton("حذف", "حذف", 0),
-#                 TemplateMessageButton("تغییر", "تغییر", 0)]
-#     message = TemplateMessage(general_message=general_message, btn_list=btn_list)
-#     bot.respond(update, message, success_callback=success, failure_callback=failure)
-#     dispatcher.register_conversation_next_step_handler(update, [
-#         MessageHandler(TemplateResponseFilter(keywords=["ایجاد"]),
-#                        create_notification),
-#         MessageHandler(TemplateResponseFilter(keywords=["حذف"]),
-#                        notification_menu),
-#         MessageHandler(TemplateResponseFilter(keywords=["تغییر"]),
-#                        notification_menu)])
 def periodic_state(bot, update):
     if notification.type is None:
         notification.type = "عادی"
@@ -121,12 +107,18 @@ def periodic_state(bot, update):
     bot.respond(update, message, success_callback=success, failure_callback=failure)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=["فقط یکبار"]), period_type),
-        MessageHandler(TemplateResponseFilter(keywords=["تکرار شونده"]), period_type)
+        MessageHandler(TemplateResponseFilter(keywords=["تکرار شونده"]), period_type),
+        MessageHandler(DefaultFilter(), wrong_periodic_state)
     ])
 
 
 def wrong_periodic_state(bot, update):
-    pass
+    bot.respond(update, "جواب نامناسب", success, failure)
+    dispatcher.register_conversation_next_step_handler(update, [
+        MessageHandler(TemplateResponseFilter(keywords=["فقط یکبار"]), period_type),
+        MessageHandler(TemplateResponseFilter(keywords=["تکرار شونده"]), period_type),
+        MessageHandler(DefaultFilter(), wrong_periodic_state)
+    ])
 
 
 def period_type(bot, update):
@@ -140,7 +132,7 @@ def period_type(bot, update):
     message = TemplateMessage(general_message=general_message, btn_list=btn_list)
     bot.respond(update, message, success_callback=success, failure_callback=failure)
     dispatcher.register_conversation_next_step_handler(update, [
-        MessageHandler(TemplateResponseFilter(keywords=["روزانه"]), ask_days),
+        MessageHandler(TemplateResponseFilter(keywords=["روزانه"]), ask_time),
         MessageHandler(TemplateResponseFilter(keywords=["هفتگی"]), ask_days),
         MessageHandler(TemplateResponseFilter(keywords=["ماهانه"]), ask_days),
         MessageHandler(TemplateResponseFilter(keywords=["سالانه"]), ask_days),
@@ -149,18 +141,28 @@ def period_type(bot, update):
 
 
 def wrong_period_type(bot, update):
-    pass
+    bot.respond(update, "جواب نامناسب", success, failure)
+    dispatcher.register_conversation_next_step_handler(update, [
+        MessageHandler(TemplateResponseFilter(keywords=["روزانه"]), ask_time),
+        MessageHandler(TemplateResponseFilter(keywords=["هفتگی"]), ask_days),
+        MessageHandler(TemplateResponseFilter(keywords=["ماهانه"]), ask_days),
+        MessageHandler(TemplateResponseFilter(keywords=["سالانه"]), ask_days),
+        MessageHandler(DefaultFilter(), wrong_period_type)
+    ])
 
 
 def ask_days(bot, update):
     time_period.type = update.get_effective_message().text_message
+    period_pattern = {"هفتگی": "^[0-6]$",
+                      "ماهانه": "^[0-2][0-9]|30$",
+                      "سالانه": "^[0-2][0-9][0-9]|3[0-5][0-9]|36[0-5]$"}
     general_message = TextMessage(
         "روز های مورد نظر در بازه ی خود را به صورت عددی در آن باز وارد کنید و در اتمام از کلید استفاده کنید")
     btn_list = [TemplateMessageButton("اتمام", "اتمام", 0)]
     message = TemplateMessage(general_message=general_message, btn_list=btn_list)
     bot.respond(update, message, success_callback=success, failure_callback=failure)
     dispatcher.register_conversation_next_step_handler(update, [
-        MessageHandler(TextFilter(pattern="^[0-9]{1,3}$"), receive_days),
+        MessageHandler(TextFilter(pattern=period_pattern[time_period.type]), receive_days),
         MessageHandler(DefaultFilter(), wrong_day)
     ])
 
@@ -175,22 +177,25 @@ def receive_days(bot, update):
 
 
 def wrong_day(bot, update):
-    bot.respond(update, TextMessage("جواب نامناسب"))
+    bot.respond(update, "جواب نامناسب", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [
+        MessageHandler(TemplateResponseFilter(keywords=["اتمام"]), ask_time),
         MessageHandler(TextFilter(pattern="^[0-9]{1,3}"), receive_days),
         MessageHandler(DefaultFilter(), wrong_day)
     ])
 
 
 def ask_time(bot, update):
-    bot.respond(update, TextMessage("زمان:\nنمونه(۱۳:۲۰)"))
+    if time_period.type is None:
+        time_period.type = "روزانه"
+    bot.respond(update, "زمان:\nنمونه(۱۳:۲۰)", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern="^([0-1][0-9]|2[0-3]):[0-5][0-9]$"), ask_picture),
         MessageHandler(DefaultFilter(), wrong_time)])
 
 
 def wrong_time(bot, update):
-    bot.respond(update, TextMessage("فرمت وارد شده صحیح نیست مجدد وارد کنید"))
+    bot.respond(update, "فرمت وارد شده صحیح نیست مجدد وارد کنید", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern="^([0-1][0-9]|2[0-3]):[0-5][0-9]$"), ask_picture),
         MessageHandler(DefaultFilter(), wrong_time)])
@@ -198,7 +203,7 @@ def wrong_time(bot, update):
 
 def ask_picture(bot, update):
     time_period.time = update.get_effective_message().text
-    bot.respond(update, TextMessage("تصویر(اختیاری)"))
+    bot.respond(update, "تصویر(اختیاری)", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [MessageHandler(PhotoFilter(), getting_picture),
                                                                 MessageHandler(DefaultFilter(), skip_picture)])
 
@@ -206,21 +211,21 @@ def ask_picture(bot, update):
 def getting_picture(bot, update):
     notification.file_id = update.body.message.file_id
     notification.file_access_hash = update.body.message.access_hash
-    bot.respond(update, TextMessage("متن هشدار:"), success, failure)
+    bot.respond(update, "متن هشدار:", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [MessageHandler(TextFilter(), ask_interval),
                                                                 MessageHandler(DefaultFilter(),
                                                                                wrong_name_response)])
 
 
 def skip_picture(bot, update):
-    bot.respond(update, TextMessage("بدون عکس.\nمتن هشدار:"), success, failure)
+    bot.respond(update, "بدون عکس.\nمتن هشدار:", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [MessageHandler(TextFilter(), ask_interval),
                                                                 MessageHandler(DefaultFilter(),
                                                                                wrong_name_response)])
 
 
 def wrong_name_response(bot, update):
-    bot.respond(update, TextMessage("جواب نامناسب. لطفا متن وارد کنید"), success, failure)
+    bot.respond(update, "جواب نامناسب. لطفا متن وارد کنید", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [MessageHandler(TextFilter(), ask_interval),
                                                                 MessageHandler(DefaultFilter(),
                                                                                wrong_name_response)])
@@ -228,29 +233,30 @@ def wrong_name_response(bot, update):
 
 def ask_interval(bot, update):
     notification.name = update.get_effective_message().text
-    bot.respond(update, TextMessage("وقفه زمانی هشدار(ثانیه):"), success, failure)
+    bot.respond(update, "وقفه زمانی هشدار(ثانیه):", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern="^[0-9]+$"), ask_stopper),
         MessageHandler(DefaultFilter(), wrong_interval_response)])
 
 
 def wrong_interval_response(bot, update):
-    bot.respond(update, TextMessage("جواب نامناسب. لطفا عدد وارد کنید"), success, failure)
+    bot.respond(update, "جواب نامناسب. لطفا بین 0 و 30 وارد کنید", success, failure)
     dispatcher.register_conversation_next_step_handler(update,
-                                                       [MessageHandler(TextFilter(pattern="^[0-9]+$"), ask_stopper),
+                                                       [MessageHandler(TextFilter(pattern="^[1-2][0-9]|[1-9]$"),
+                                                                       ask_stopper),
                                                         MessageHandler(DefaultFilter(), wrong_interval_response)])
 
 
 def ask_stopper(bot, update):
     notification.interval = update.get_effective_message().text
-    bot.respond(update, TextMessage("فرمان توقف:"), success, failure)
+    bot.respond(update, "فرمان توقف:", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(), finnish_notification_register),
         MessageHandler(DefaultFilter(), wrong_stopper_response)])
 
 
 def wrong_stopper_response(bot, update):
-    bot.respond(update, TextMessage("جواب نامناسب. لطفا متن وارد کنید"), success, failure)
+    bot.respond(update, "جواب نامناسب. لطفا متن وارد کنید", success, failure)
     dispatcher.register_conversation_next_step_handler(update,
                                                        [MessageHandler(TextFilter(), finnish_notification_register),
                                                         MessageHandler(DefaultFilter(), wrong_stopper_response)])
@@ -273,18 +279,16 @@ def finnish_notification_register(bot, update):
     else:
         final_message = message
     notification.time_period = time_period
-    bot.respond(update, final_message, success, failure)
     session.add(notification)
     session.commit()
-
-    # general_message = TextMessage(" ")
-    # btn_list = [TemplateMessageButton("پایان", "پایان", 0)]
-    # tmessage = TemplateMessage(general_message=general_message, btn_list=btn_list)
-    # bot.respond(update, tmessage, success_callback=success, failure_callback=failure)
+    bot.respond(update, final_message, success, failure)
     dispatcher.finish_conversation(update)
 
 
-def create_debit(bot, update):
+@dispatcher.message_handler([DefaultFilter()])
+def default_handler(bot, update):
+    # if isinstance(update.body.message, BankMessage):
+    #     print(update.body.message.message)
     pass
 
 

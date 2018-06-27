@@ -48,12 +48,16 @@ def stopper_handler(bot, update):
     notificationCanceler[peer_id] = message
 
 
-def db_pushing():
+def db_pulling():
     current_time = datetime.datetime.now()
+    first_day_of_year = datetime.datetime(current_time.year, 1, 1)
     later_10min = current_time + datetime.timedelta(minutes=10)
-    last_10min = current_time - datetime.timedelta(minutes=10)
     notifications = session.query(Notification).join(TimePeriod).join(DayNumber).filter(Notification.on_state == True).\
-        filter(and_(TimePeriod.type == "هفتگی", DayNumber.day_number == (current_time.weekday() + 2) % 7)).filter(
+        filter(or_(and_(TimePeriod.type == "هفتگی", DayNumber.day_number == (current_time.weekday() + 2) % 7),
+                   and_(TimePeriod.type == "ماهانه", DayNumber.day_number == current_time.day),
+                   and_(TimePeriod.type == "سالانه",
+                        DayNumber.day_number == (current_time - first_day_of_year).days + 1),
+                   and_(TimePeriod.type == "روزانه"))).filter(
         current_time.time() < TimePeriod.time).filter(TimePeriod.time < later_10min.time()).all()
     for notification in notifications:
         for day in notification.time_period.days:
@@ -63,7 +67,7 @@ def db_pushing():
             send_notification_task, notification))
 
 
-def push_message_to_sender(notification):
+def push_message_to_db(notification):
     message_object = Message(notification, datetime.datetime.now())
     session.add(message_object)
     session.commit()
@@ -85,11 +89,10 @@ def sending_message_canceler(iter_job, notification):
 def send_notification_task(notification):
     taskStopper[notification.peer_id] = ""
     notificationCanceler[notification.peer_id] = ""
-    iter_job = schedule.every(notification.interval).seconds.do(functools.partial(push_message_to_sender, notification))
+    iter_job = schedule.every(notification.interval).seconds.do(functools.partial(push_message_to_db, notification))
     threading.Thread(target=sending_message_canceler, args=(iter_job, notification)).start()
-    # sending_message_canceler(iter_job, user_peer.peer_id, stopper)
     print("some task started")
-    # return schedule.CancelJob
+    return schedule.CancelJob
 
 
 def schedule_loop():
@@ -98,23 +101,10 @@ def schedule_loop():
         time.sleep(1)
 
 
-# def loop_forever():
-#     iloop = asyncio.new_event_loop()
-#     asyncio.set_event_loop(iloop)
-#     iloop.create_task(db_pushing())
-#     iloop.run_forever()
-
-
-# loop = asyncio.get_event_loop()
-# loop.create_task()
-# tasks = [asyncio.ensure_future(db_pushing())]
-# asyncio.ensure_future(updater_run())]
-# loop.call_later(300, db_pushing())
-
 threading.Thread(target=schedule_loop, args=()).start()
 
-schedule.every(10).minutes.do(db_pushing)
+schedule.every(10).minutes.do(db_pulling)
 
-db_pushing()
+db_pulling()
 
 updater.run()

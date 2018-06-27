@@ -1,3 +1,4 @@
+pykka
 schedule
 aiohttp==2.3.7
 async-timeout==2.0.0
