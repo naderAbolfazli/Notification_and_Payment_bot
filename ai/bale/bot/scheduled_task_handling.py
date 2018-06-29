@@ -9,7 +9,7 @@ import threading
 import time
 
 import schedule
-from balebot.filters import DefaultFilter
+from balebot.filters import DefaultFilter, TextFilter
 from balebot.updater import Updater
 from sqlalchemy import or_, and_
 
@@ -40,7 +40,7 @@ def failure(response, user_data):
     print(user_data)
 
 
-@dispatcher.message_handler([DefaultFilter()])
+@dispatcher.message_handler([TextFilter()])
 def stopper_handler(bot, update):
     peer_id = update.get_effective_user().peer_id
     message = update.get_effective_message().text
@@ -103,7 +103,7 @@ def schedule_loop():
 
 threading.Thread(target=schedule_loop, args=()).start()
 
-schedule.every(10).minutes.do(db_pulling)
+schedule.every(2).minutes.do(db_pulling)
 
 db_pulling()
 

@@ -1,7 +1,6 @@
 import asyncio
 import datetime
 
-from balebot.filters import DefaultFilter
 from balebot.models.base_models import UserPeer
 from balebot.models.messages import PhotoMessage, TextMessage, PurchaseMessage
 from balebot.models.messages.banking.money_request_type import MoneyRequestType
@@ -22,13 +21,7 @@ Base.metadata.create_all(engine)
 session = Session()
 
 
-@dispatcher.message_handler([DefaultFilter()])
-def default(bot, update):
-    bot.respond(update, "hello", success, failure)
-
-
 def db_pulling():
-    print("in dbpuling")
     messages = session.query(Message).join(Notification).filter(Message.sent == False).all()  # not sent messages
     for m in messages:
         print(m)

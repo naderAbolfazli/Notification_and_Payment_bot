@@ -100,6 +100,7 @@ def wrong_amount(bot, update):
 def periodic_state(bot, update):
     if notification.type is None:
         notification.type = "عادی"
+    notification.money = update.get_effective_message().text
     general_message = TextMessage("نوع اعلان هشدار")
     btn_list = [TemplateMessageButton("فقط یکبار", "فقط یکبار", 0),
                 TemplateMessageButton("تکرار شونده", "تکرار شونده", 0)]
