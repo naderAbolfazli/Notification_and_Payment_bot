@@ -1,10 +1,11 @@
 import asyncio
 import datetime
 
-from balebot.models.base_models import UserPeer
+from balebot.models.base_models import UserPeer, Request
 from balebot.models.messages import PhotoMessage, TextMessage, PurchaseMessage
 from balebot.models.messages.banking.money_request_type import MoneyRequestType
 from balebot.updater import Updater
+from balebot.utils.util_functions import generate_random_id
 
 from ai.bale.bot.message import Message
 from ai.bale.bot.notification import Notification
@@ -41,20 +42,22 @@ def db_pulling():
                                             money_request_type=MoneyRequestType.normal)
         else:
             final_message = message
-        loop.call_soon(send_message, final_message, user_peer)
+        random_id = generate_random_id()
+        loop.call_soon(send_message, final_message, user_peer, random_id)
         m.sent = True
         m.time = datetime.datetime.now()
+        m.random_id = random_id
         session.commit()
-    loop.call_later(5, db_pulling)
+    loop.call_later(1, db_pulling)
 
 
-def send_message(message, user_peer):
-    print("in sender")
-    bot.send_message(message, user_peer, success_callback=success, failure_callback=failure)
+def send_message(message, user_peer, random_id):
+    bot.send_message(message, user_peer, random_id=random_id, success_callback=success, failure_callback=failure)
 
 
 def success(response, user_data):
     print("success : ", response)
+    # response_date = response.date
     print(user_data)
 
 
