@@ -8,6 +8,7 @@ from ai.bale.bot.base import Base
 class Notification(Base):
     __tablename__ = 'notifications'
     id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True)
     peer_id = Column(String, nullable=False)
     peer_access_hash = Column(String, nullable=False)
     time_period_id = Column(Integer, ForeignKey("time_period.id"))
@@ -17,7 +18,6 @@ class Notification(Base):
     only_once = Column(BOOLEAN, nullable=False)
     card_number = Column(String)
     money = Column(String)
-    name = Column(String)
     stopper = Column(String)
     file_id = Column(String)
     file_access_hash = Column(String)

@@ -3,15 +3,22 @@ for Bale
 author: Nader"""
 
 import asyncio
+import datetime
 
 from balebot.filters import *
 from balebot.handlers import MessageHandler
+from balebot.models.base_models import FatSeqUpdate
+from balebot.models.base_models.banking.receipt_message import ReceiptMessage
+from balebot.models.base_models.value_types import MapValueItem
 from balebot.models.messages import *
-from balebot.models.messages.banking.money_request_type import MoneyRequestType
+from balebot.models.messages.banking.money_request_type import *
+from balebot.models.messages.banking.purchase_message import *
+from balebot.models.server_responses.messaging.message_sent import MessageSent
 from balebot.updater import Updater
 
 from ai.bale.bot.base import Base, engine, Session
 from ai.bale.bot.notification import Notification
+from ai.bale.bot.receipt import Receipt
 from ai.bale.bot.time_period import TimePeriod, DayNumber
 
 updater = Updater(token="0f8c34cd08e81d3604f23f712a095f167dfc37d8",
@@ -23,7 +30,6 @@ Base.metadata.create_all(engine)
 session = Session()
 
 
-
 def success(response, user_data):
     print("success : ", response)
     print(user_data)
@@ -32,6 +38,14 @@ def success(response, user_data):
 def failure(response, user_data):
     print("failure : ", response)
     print(user_data)
+
+
+def purchase_message_success(response, user_data):
+    print("purchase response success :")
+
+
+def purchase_message_failure(response, user_data):
+    print("purchase response failure :")
 
 
 notification = Notification()
@@ -272,6 +286,7 @@ def finnish_notification_register(bot, update):
                                file_size='11337',
                                mime_type="image/jpeg", caption_text=TextMessage(notification.name),
                                file_storage_version=1, thumb=None)
+
     else:
         message = TextMessage(notification.name)
     if notification.type == "بدهی":
@@ -282,15 +297,31 @@ def finnish_notification_register(bot, update):
     notification.time_period = time_period
     session.add(notification)
     session.commit()
-    bot.respond(update, final_message, success, failure)
+    bot.respond(update, final_message, purchase_message_success, purchase_message_failure)
     dispatcher.finish_conversation(update)
 
 
-@dispatcher.message_handler([DefaultFilter()])
-def default_handler(bot, update):
-    # if isinstance(update.body.message, BankMessage):
-    #     print(update.body.message.message)
-    pass
+@dispatcher.message_handler([BankMessageFilter()])
+def handling_bank_message(bot, update):
+    if len(update.get_effective_user().peer_id) < 3:
+        return
+    transfer_info = update.get_effective_message().bank_ext_message.transfer_info.items
+    d = {"regarding": 0, "payer": 2, "description": 4, "date": 9, "status": 10, "traceNo": 12}
+    peer_id = transfer_info[d["payer"]].value.get_json_object()['value']
+    notification_name = transfer_info[d["regarding"]].value.get_json_object()['text']
+    description = transfer_info[d["description"]].value.get_json_object()['text']
+    status = transfer_info[d["status"]].value.get_json_object()['text']
+    # trace_no = None
+    # if status == "SUCCESS":
+    trace_no = transfer_info[d["traceNo"]].value.get_json_object()['value']
+    purchase_message_date = transfer_info[d["date"]].value.get_json_object()['value']
+    purchased_notification = session.query(Notification).filter(Notification.name == notification_name).filter(
+        Notification.peer_id == peer_id).all()[0]
+    current_time = datetime.datetime.now()
+    receipt = Receipt(purchased_notification, purchase_message_date, current_time, description, status, trace_no)
+    session.add(receipt)
+    session.commit()
+    print("receipt registered in db")
 
 
 updater.run()
