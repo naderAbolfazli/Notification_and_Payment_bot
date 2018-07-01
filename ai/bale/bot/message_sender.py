@@ -4,6 +4,7 @@ import datetime
 from balebot.models.base_models import UserPeer, Request
 from balebot.models.messages import PhotoMessage, TextMessage, PurchaseMessage
 from balebot.models.messages.banking.money_request_type import MoneyRequestType
+from balebot.models.server_responses.messaging.message_sent import MessageSent
 from balebot.updater import Updater
 from balebot.utils.util_functions import generate_random_id
 
@@ -13,7 +14,7 @@ from ai.bale.bot.time_period import *
 from ai.bale.bot.base import Session, engine, Base
 
 loop = asyncio.get_event_loop()
-updater = Updater(token="0f8c34cd08e81d3604f23f712a095f167dfc37d8",
+updater = Updater(token="",
                   loop=loop)
 bot = updater.bot
 dispatcher = updater.dispatcher
@@ -52,12 +53,20 @@ def db_pulling():
 
 
 def send_message(message, user_peer, random_id):
-    bot.send_message(message, user_peer, random_id=random_id, success_callback=success, failure_callback=failure)
+    kwargs = {"random_id": random_id}
+    bot.send_message(message, user_peer, random_id=random_id, success_callback=success,
+                     failure_callback=failure, kwargs=kwargs)
 
 
 def success(response, user_data):
+    # MessageSent
+    user_data = user_data["kwargs"]
+    random_id = user_data["random_id"]
+    msg = session.query(Message).filter(Message.random_id == random_id).all()[0]
+    response_date = response.body.date
+    msg.response_date = response_date
+    session.commit()
     print("success : ", response)
-    # response_date = response.date
     print(user_data)
 
 

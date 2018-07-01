@@ -17,11 +17,12 @@ from balebot.models.server_responses.messaging.message_sent import MessageSent
 from balebot.updater import Updater
 
 from ai.bale.bot.base import Base, engine, Session
+from ai.bale.bot.message import Message
 from ai.bale.bot.notification import Notification
 from ai.bale.bot.receipt import Receipt
 from ai.bale.bot.time_period import TimePeriod, DayNumber
 
-updater = Updater(token="0f8c34cd08e81d3604f23f712a095f167dfc37d8",
+updater = Updater(token="",
                   loop=asyncio.get_event_loop())
 bot = updater.bot
 dispatcher = updater.dispatcher
@@ -114,7 +115,8 @@ def wrong_amount(bot, update):
 def periodic_state(bot, update):
     if notification.type is None:
         notification.type = "عادی"
-    notification.money = update.get_effective_message().text
+    else:
+        notification.money = update.get_effective_message().text
     general_message = TextMessage("نوع اعلان هشدار")
     btn_list = [TemplateMessageButton("فقط یکبار", "فقط یکبار", 0),
                 TemplateMessageButton("تکرار شونده", "تکرار شونده", 0)]
@@ -166,11 +168,14 @@ def wrong_period_type(bot, update):
     ])
 
 
+period_pattern = {"هفتگی": "^[0-6]$",
+                  "ماهانه": "^[0-2][0-9]|30$",
+                  "سالانه": "^[0-2][0-9][0-9]|3[0-5][0-9]|36[0-5]$"}
+
+
 def ask_days(bot, update):
     time_period.type = update.get_effective_message().text_message
-    period_pattern = {"هفتگی": "^[0-6]$",
-                      "ماهانه": "^[0-2][0-9]|30$",
-                      "سالانه": "^[0-2][0-9][0-9]|3[0-5][0-9]|36[0-5]$"}
+
     general_message = TextMessage(
         "روز های مورد نظر در بازه ی خود را به صورت عددی در آن باز وارد کنید و در اتمام از کلید استفاده کنید")
     btn_list = [TemplateMessageButton("اتمام", "اتمام", 0)]
@@ -186,7 +191,7 @@ def receive_days(bot, update):
     time_period.days += [DayNumber(update.get_effective_message().text)]
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=["اتمام"]), ask_time),
-        MessageHandler(TextFilter(pattern="^[0-9]{1,3}"), receive_days),
+        MessageHandler(TextFilter(pattern=period_pattern[time_period.type]), receive_days),
         MessageHandler(DefaultFilter(), wrong_day)
     ])
 
@@ -195,7 +200,7 @@ def wrong_day(bot, update):
     bot.respond(update, "جواب نامناسب", success, failure)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=["اتمام"]), ask_time),
-        MessageHandler(TextFilter(pattern="^[0-9]{1,3}"), receive_days),
+        MessageHandler(TextFilter(pattern=period_pattern[time_period.type]), receive_days),
         MessageHandler(DefaultFilter(), wrong_day)
     ])
 
@@ -306,17 +311,18 @@ def handling_bank_message(bot, update):
     if len(update.get_effective_user().peer_id) < 3:
         return
     transfer_info = update.get_effective_message().bank_ext_message.transfer_info.items
-    d = {"regarding": 0, "payer": 2, "description": 4, "date": 9, "status": 10, "traceNo": 12}
-    peer_id = transfer_info[d["payer"]].value.get_json_object()['value']
-    notification_name = transfer_info[d["regarding"]].value.get_json_object()['text']
+    d = {"description": 4, "date": 9, "status": 10, "msgUID": 6, "traceNo": 12}
     description = transfer_info[d["description"]].value.get_json_object()['text']
     status = transfer_info[d["status"]].value.get_json_object()['text']
+    msgUID = transfer_info[d["msgUID"]].value.get_json_object()['text']
+    random_id = str(msgUID).split("-")[0]
     # trace_no = None
     # if status == "SUCCESS":
     trace_no = transfer_info[d["traceNo"]].value.get_json_object()['value']
-    purchase_message_date = transfer_info[d["date"]].value.get_json_object()['value']
-    purchased_notification = session.query(Notification).filter(Notification.name == notification_name).filter(
-        Notification.peer_id == peer_id).all()[0]
+    purchase_message_date = str(msgUID).split("-")[1]
+    purchased_notification = session.query(Message).filter(
+            Message.response_date == purchase_message_date).filter(
+            Message.random_id == random_id).all()[0].notification
     current_time = datetime.datetime.now()
     receipt = Receipt(purchased_notification, purchase_message_date, current_time, description, status, trace_no)
     session.add(receipt)

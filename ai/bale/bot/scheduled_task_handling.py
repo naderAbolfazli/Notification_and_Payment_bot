@@ -18,7 +18,7 @@ from ai.bale.bot.message import Message
 from ai.bale.bot.notification import Notification
 from ai.bale.bot.time_period import TimePeriod, DayNumber
 
-updater = Updater(token="0f8c34cd08e81d3604f23f712a095f167dfc37d8",
+updater = Updater(token="",
                   loop=asyncio.get_event_loop())
 bot = updater.bot
 dispatcher = updater.dispatcher
@@ -51,18 +51,17 @@ def stopper_handler(bot, update):
 def db_pulling():
     current_time = datetime.datetime.now()
     first_day_of_year = datetime.datetime(current_time.year, 1, 1)
-    later_10min = current_time + datetime.timedelta(minutes=10)
+    later_3min = current_time + datetime.timedelta(minutes=3)
     notifications = session.query(Notification).join(TimePeriod).join(DayNumber).filter(Notification.on_state == True).\
         filter(or_(and_(TimePeriod.type == "هفتگی", DayNumber.day_number == (current_time.weekday() + 2) % 7),
                    and_(TimePeriod.type == "ماهانه", DayNumber.day_number == current_time.day),
                    and_(TimePeriod.type == "سالانه",
                         DayNumber.day_number == (current_time - first_day_of_year).days + 1),
-                   and_(TimePeriod.type == "روزانه"))).filter(
-        current_time.time() < TimePeriod.time).filter(TimePeriod.time < later_10min.time()).all()
+                   TimePeriod.type == "روزانه")).filter(
+        current_time.time() <= TimePeriod.time).filter(TimePeriod.time <= later_3min.time()).all()
     for notification in notifications:
-        for day in notification.time_period.days:
-            print(day.day_number)
         schedule_time = str(notification.time_period.time)[0:5]
+        print("some task gonna scheduled for {}", schedule_time)
         schedule.every().day.at(schedule_time).do(functools.partial(
             send_notification_task, notification))
 
@@ -103,7 +102,7 @@ def schedule_loop():
 
 threading.Thread(target=schedule_loop, args=()).start()
 
-schedule.every(2).minutes.do(db_pulling)
+schedule.every(3).minutes.do(db_pulling)
 
 db_pulling()
 
