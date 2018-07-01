@@ -14,7 +14,7 @@ from ai.bale.bot.time_period import *
 from ai.bale.bot.base import Session, engine, Base
 
 loop = asyncio.get_event_loop()
-updater = Updater(token="",
+updater = Updater(token="0f8c34cd08e81d3604f23f712a095f167dfc37d8",
                   loop=loop)
 bot = updater.bot
 dispatcher = updater.dispatcher
@@ -59,7 +59,6 @@ def send_message(message, user_peer, random_id):
 
 
 def success(response, user_data):
-    # MessageSent
     user_data = user_data["kwargs"]
     random_id = user_data["random_id"]
     msg = session.query(Message).filter(Message.random_id == random_id).all()[0]
