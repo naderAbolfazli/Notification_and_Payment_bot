@@ -9,6 +9,7 @@ from balebot.updater import Updater
 from balebot.utils.util_functions import generate_random_id
 from sqlalchemy import cast, Date
 
+from ai.bale.notification_bot.constant.notification_bot_messages import BotMessages
 from ai.bale.notification_bot.models.base import Session, engine, Base
 from ai.bale.notification_bot.models.message import Message
 
@@ -24,58 +25,46 @@ session = Session()
 
 def db_pulling():
     current_time = datetime.datetime.now()
-    time_delta = current_time + datetime.timedelta(minutes=1)
-    passed_day = current_time - datetime.timedelta(days=1)
 
-    today_not_sent_messages = session.query(Message).filter(Message.sent == False).filter(  # not sent messages
-        cast(Message.sending_time, Date) == current_time.date())
+    message_tobe_sent = session.query(Message).filter(Message.sent == 0).filter(  # not sent messages
+        cast(Message.sending_time, Date) == current_time.date()).filter(
+        Message.sending_time < current_time).all()
 
-    going_to_send_messages = today_not_sent_messages.filter(Message.sending_time > current_time).filter(
-        Message.sending_time <= time_delta).all()
-    sending_messages = going_to_send_messages
-
-    missed_messages = today_not_sent_messages.filter(Message.sending_time < current_time).filter(
-        Message.sending_time > passed_day).all()
-    sending_messages += missed_messages
-
-    for m in sending_messages:
-        notification = m.notification
+    for msg in message_tobe_sent:
+        notification = msg.notification
         user_peer = UserPeer(notification.peer_id, notification.peer_access_hash)
-        if notification.file_id is not None:
+        if notification.file_id:
             message = PhotoMessage(file_id=notification.file_id, access_hash=notification.file_access_hash,
-                                   name="Hoshdar",
+                                   name=BotMessages.photo_name,
                                    file_size='11337',
                                    mime_type="image/jpeg", caption_text=TextMessage(notification.name),
                                    file_storage_version=1, thumb=None)
         else:
-            message = TextMessage(notification.name)
+            message = TextMessage(notification.text)
         if notification.type == "debt":
             final_message = PurchaseMessage(msg=message, account_number=notification.card_number,
-                                            amount=notification.money,
+                                            amount=notification.money_amount,
                                             money_request_type=MoneyRequestType.normal)
         else:
             final_message = message
-        random_id = generate_random_id()
-        loop.call_later(60, send_message, final_message, user_peer, random_id)
-        m.sent = True
-        m.time = jdatetime.datetime.now()
-        m.random_id = random_id
-        session.commit()
+        loop.call_soon(send_message, final_message, user_peer, msg)
     loop.call_later(60, db_pulling)
 
 
-def send_message(message, user_peer, random_id):
-    kwargs = {"random_id": random_id}
-    bot.send_message(message, user_peer, random_id=random_id, success_callback=success,
+def send_message(base_message, user_peer, msg):
+    random_id = generate_random_id()
+    msg.random_id = random_id
+    session.commit()
+    kwargs = {"random_id": random_id, "db_msg": msg}
+    bot.send_message(base_message, user_peer, random_id=random_id, success_callback=success,
                      failure_callback=failure, kwargs=kwargs)
 
 
 def success(response, user_data):
     user_data = user_data["kwargs"]
-    random_id = user_data["random_id"]
-    msg = session.query(Message).filter(Message.random_id == random_id).all()[0]  # it only return one msg
-    response_date = response.body.date
-    msg.response_date = response_date
+    msg = user_data["db_msg"]
+    msg.response_date = response.body.date
+    msg.sent = 1
     session.commit()
     print("success : ", response)
     print(user_data)

@@ -12,10 +12,10 @@ class Message(Base):
     sending_time = Column(DateTime, nullable=False)
     random_id = Column(String)
     response_date = Column(String)
-    sent = Column(BOOLEAN)
+    sent = Column(Integer)
     notification = relationship("Notification", backref="messages")
 
-    def __init__(self, notification, sending_time, random_id=None, response_date=None, sent=False):
+    def __init__(self, notification, sending_time, random_id=None, response_date=None, sent=0):
         self.notification = notification
         self.sending_time = sending_time
         self.random_id = random_id
