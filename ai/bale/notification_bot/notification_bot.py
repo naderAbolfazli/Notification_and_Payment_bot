@@ -15,7 +15,7 @@ from balebot.updater import Updater
 
 from Config import Config
 from ai.bale.notification_bot.constants import Command, Attr, ResponseValue, BotMessages, Pattern, MessageButtonAction, \
-    MimeType, TransferInfo, MsgUID, LogMessage, UserData
+    MimeType, TransferInfo, MsgUID, LogMessage, UserData, Step
 from ai.bale.notification_bot.logger import Logger
 from ai.bale.notification_bot.models.base import Base, engine, Session
 from ai.bale.notification_bot.models.message import Message
@@ -109,7 +109,8 @@ def conversation_starter(bot, update):
                 TemplateMessageButton(BotMessages.showing_receipts, ResponseValue.showing_receipts,
                                       MessageButtonAction.default)]
     message = TemplateMessage(general_message=general_message, btn_list=btn_list)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "conversation_starter", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.conversation_starter,
+              UserData.message: message, UserData.attempt:1}
     bot.respond(update, message, success_callback=success, failure_callback=failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.setup_notification]), ask_time),
@@ -124,12 +125,12 @@ def showing_receipts(bot, update):
         file_id = str(user_data.get(Attr.file_id, None))
         file_url = str(user_data.get(Attr.url))
         my_logger.info(LogMessage.successful_report_upload,
-                       extra={"for_user": user_peer.peer_id, "file_url": file_url})
+                       extra={UserData.peer_id: user_peer.peer_id, UserData.file_url: file_url})
         access_hash = str(user_data.get(Attr.user_id, None))
         doc_message = DocumentMessage(file_id=file_id, access_hash=access_hash, name="purchase_report.csv",
                                       file_size=outfile.__sizeof__(), mime_type=MimeType.csv,
                                       caption_text=TextMessage(BotMessages.receipts_report))
-        kwargs = {"user_peer": user_peer, "doc_message": doc_message, "report_attempt": 1}
+        kwargs = {UserData.user_peer: user_peer, UserData.doc_message: doc_message, UserData.report_attempt: 1}
         bot.send_message(doc_message, user_peer, success_callback=receipt_report_success,
                          failure_callback=receipt_report_failure, kwargs=kwargs)
 
@@ -154,7 +155,7 @@ def showing_receipts(bot, update):
 
 def ask_time(bot, update):
     message = TextMessage(BotMessages.ask_time)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "ask_time", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "ask_time", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.persian_datetime), periodic_state),
@@ -164,7 +165,7 @@ def ask_time(bot, update):
 
 def wrong_time(bot, update):
     message = TextMessage(BotMessages.wrong_format)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "wrong_time", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "wrong_time", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.persian_datetime), periodic_state),
@@ -179,7 +180,7 @@ def periodic_state(bot, update):
     btn_list = [TemplateMessageButton(BotMessages.only_once, ResponseValue.only_once, MessageButtonAction.default),
                 TemplateMessageButton(BotMessages.iterative, ResponseValue.iterative, MessageButtonAction.default)]
     message = TemplateMessage(general_message=general_message, btn_list=btn_list)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "periodic_state", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "periodic_state", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success_callback=success, failure_callback=failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.only_once]), ask_type),
@@ -192,7 +193,8 @@ def periodic_state(bot, update):
 
 def wrong_periodic_state(bot, update):
     message = TextMessage(BotMessages.wrong_answer)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "wrong_periodic_state", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "wrong_periodic_state",
+              UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.only_once]), ask_type),
@@ -208,7 +210,7 @@ def period_type(bot, update):
                 TemplateMessageButton(BotMessages.weekly, ResponseValue.weekly, MessageButtonAction.default),
                 TemplateMessageButton(BotMessages.monthly, ResponseValue.monthly, MessageButtonAction.default)]
     message = TemplateMessage(general_message=general_message, btn_list=btn_list)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "period_type", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "period_type", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success_callback=success, failure_callback=failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.daily]), ask_iterate_number),
@@ -221,7 +223,8 @@ def period_type(bot, update):
 
 def wrong_period_type(bot, update):
     message = TextMessage(BotMessages.wrong_answer)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "wrong_period_type", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "wrong_period_type",
+              UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.daily]), ask_iterate_number),
@@ -235,7 +238,8 @@ def wrong_period_type(bot, update):
 def ask_iterate_number(bot, update):
     notification[Attr.periodic_type] = update.get_effective_message().text_message
     message = TextMessage(BotMessages.iterate_number_selection)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "ask_iterate_number", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "ask_iterate_number",
+              UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.number), ask_type),
@@ -246,7 +250,7 @@ def ask_iterate_number(bot, update):
 
 def wrong_iterate_number(bot, update):
     message = TextMessage(BotMessages.wrong_answer_pls_number)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.number), ask_type),
@@ -265,7 +269,7 @@ def ask_type(bot, update):
     btn_list = [TemplateMessageButton(BotMessages.normal, ResponseValue.normal, MessageButtonAction.default),
                 TemplateMessageButton(BotMessages.debt, ResponseValue.debt, MessageButtonAction.default)]
     message = TemplateMessage(general_message=general_message, btn_list=btn_list)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success_callback=success, failure_callback=failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.normal]), ask_picture),
@@ -275,7 +279,7 @@ def ask_type(bot, update):
 
 def wrong_type(bot, update):
     message = TextMessage(BotMessages.wrong_answer)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.normal]), ask_picture),
@@ -287,7 +291,7 @@ def wrong_type(bot, update):
 def ask_card_number(bot, update):
     notification[Attr.type] = ResponseValue.debt
     message = TextMessage(BotMessages.card_number_entering)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.card_number), ask_amount),
@@ -297,7 +301,7 @@ def ask_card_number(bot, update):
 
 def wrong_card_number(bot, update):
     message = TextMessage(BotMessages.wrong_card_number)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.card_number), ask_amount),
@@ -308,7 +312,7 @@ def wrong_card_number(bot, update):
 def ask_amount(bot, update):
     notification[Attr.card_number] = update.get_effective_message().text
     message = TextMessage(BotMessages.amount_entering)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.number), ask_picture),
@@ -319,7 +323,7 @@ def ask_amount(bot, update):
 
 def wrong_amount(bot, update):
     message = TextMessage(BotMessages.wrong_answer_pls_number)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.number), ask_picture),
@@ -337,7 +341,7 @@ def ask_picture(bot, update):
                               btn_list=[
                                   TemplateMessageButton(BotMessages.no_picture_needed, ResponseValue.no_picture,
                                                         MessageButtonAction.default)])
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.no_picture]), ask_text),
@@ -348,7 +352,7 @@ def ask_picture(bot, update):
 
 def wrong_picture(bot, update):
     message = TextMessage(BotMessages.wrong_answer)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.no_picture]), ask_text),
@@ -362,7 +366,7 @@ def getting_picture(bot, update):
     notification[Attr.file_access_hash] = update.body.message.access_hash
     notification[Attr.file_size] = update.body.message.file_size
     message = TextMessage(BotMessages.notification_text_entering)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update,
                                                        [MessageHandler(TextFilter(), finnish_notification_register),
@@ -372,7 +376,7 @@ def getting_picture(bot, update):
 
 def ask_text(bot, update):
     message = TextMessage(BotMessages.notification_text_entering)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update,
                                                        [MessageHandler(TextFilter(), finnish_notification_register),
@@ -382,7 +386,7 @@ def ask_text(bot, update):
 
 def wrong_name_response(bot, update):
     message = TextMessage(BotMessages.wrong_answer_pls_text)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update,
                                                        [MessageHandler(TextFilter(), finnish_notification_register),
@@ -406,10 +410,10 @@ def finnish_notification_register(bot, update):
         session.add(message)
     session.commit()
     my_logger.info(LogMessage.notification_registering,
-                   extra={"peer_id": notification[Attr.peer_id], "text": notification[Attr.text],
-                          "type": notification[Attr.type]})
+                   extra={UserData.user_id: notification[Attr.peer_id], Attr.text: notification[Attr.text],
+                          Attr.type: notification[Attr.type]})
     message = TextMessage(BotMessages.successful_notification_registering)
-    kwargs = {"user_peer": update.get_effective_user(), "step_name": "", "message": message}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.finish_conversation(update)
 
@@ -446,7 +450,7 @@ def handling_bank_message(bot, update):
     session.add(receipt)
     session.commit()
     my_logger.info(LogMessage.registering_receipt,
-                   extra={"payer": payer, "receiver": receiver, "description": description})
+                   extra={Attr.payer: payer, Attr.receiver: receiver, Attr.description: description})
 
 
 updater.run()

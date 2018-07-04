@@ -16,7 +16,7 @@ MimeType = enum(
     xlsx="application / vnd.openxmlformats - officedocument.spreadsheetml.sheet"
 )
 
-Attr = enum(
+class Attr:
     peer_id="peer_id",
     user_id="user_id",
     peer_access_hash="peer_access_hash",
@@ -31,10 +31,14 @@ Attr = enum(
     money_amount="money_amount",
     text="text",
     value="value",
-    url="url"
-)
+    url="url",
+    payer="payer",
+    receiver="receiver",
+    description="description"
 
-BotMessages = enum(
+
+
+class BotMessages:
     service_selection="انتخاب سرویس",
     setup_notification="تنظیم هشدار",
     showing_receipts="مشاهده پرداخت ها",
@@ -63,18 +67,18 @@ BotMessages = enum(
     no_picture_needed="بدون عکس",
     successful_notification_registering="هشدار با موفقیت ثبت شد",
     photo_name="هشدار"
-)
 
-Pattern = enum(
+
+class Pattern:
     persian_datetime="^(139[7-9]|140[0-9])-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|30) ([0-1][0-9]|2[0-3]):[0-5][0-9]$",
     card_number="^[0-9]{16}$",
     number="^[0-9]+",
     weekday="^[0-6]$",
     month_day="^[1-2][0-9]|[1-9]|30$",
     year_day="^[0-2][0-9][0-9]|3[0-5][0-9]|36[0-5]$",
-)
 
-ResponseValue = enum(
+
+class ResponseValue:
     setup_notification="setup_notification",
     showing_receipts="showing_receipts",
     only_once="only_once",
@@ -85,9 +89,9 @@ ResponseValue = enum(
     normal="normal",
     debt="debt",
     no_picture="no_picture"
-)
 
-LogMessage = enum(
+
+class LogMessage:
     db_has_message_to_send="there are some message to send",
     reading_message_db="reading from messages db",
     successful_sending="successful sending of message:",
@@ -100,9 +104,9 @@ LogMessage = enum(
     notification_registering="notification registered successfully",
     successful_step_message_sending="successful step message sending",
     failed_step_message_sending="failure step message sending"
-)
 
-TransferInfo = enum(
+
+class TransferInfo:
     isExpenditure=1,
     payer=2,
     description=4,
@@ -112,7 +116,7 @@ TransferInfo = enum(
     receiver=7,
     traceNo=12,
     success_status="SUCCESS"
-)
+
 
 MessageStatus = enum(
     sent=1,
@@ -120,16 +124,16 @@ MessageStatus = enum(
     failed=-1
 )
 
-SendingAttempt = enum(
+class SendingAttempt:
     first=1
-)
+
 
 MsgUID = enum(
     random_id=0,
     date=1
 )
 
-UserData = enum(
+class UserData:
     kwargs="kwargs",
     user_id="user_id",
     user_peer="user_peer",
@@ -138,5 +142,8 @@ UserData = enum(
     attempt="attempt",
     report_attempt="report_attempt",
     doc_message="doc_message",
+    file_url="file_url",
 
-)
+
+class Step:
+    conversation_starter = "conversation_starter"
