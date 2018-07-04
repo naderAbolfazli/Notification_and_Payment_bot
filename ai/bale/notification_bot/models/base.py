@@ -2,7 +2,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-engine = create_engine('postgresql://postgres:nader1993@localhost:5432/notification_bot')
+from Config import Config
+
+engine = create_engine(Config.database_url)
 Session = sessionmaker(bind=engine)
 
 Base = declarative_base()
