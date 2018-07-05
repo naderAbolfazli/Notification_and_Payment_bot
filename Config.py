@@ -20,4 +20,4 @@ class Config:
     graylog_port = 12201
     log_level = logging.DEBUG  # DEBUG | INFO | ERROR | WARNING | CRITICAL
     log_facility_name = "python_bale_bot"
-    source = "bot_name"
+    source = "notification_bot"

@@ -10,13 +10,15 @@ import locale
 import jdatetime
 from balebot.filters import *
 from balebot.handlers import MessageHandler, CommandHandler
+from balebot.models.constants.file_type import FileType
 from balebot.models.messages import *
 from balebot.updater import Updater
 
 from Config import Config
-from ai.bale.notification_bot.constants import Command, Attr, ResponseValue, BotMessages, Pattern, MessageButtonAction, \
-    MimeType, TransferInfo, MsgUID, LogMessage, UserData, Step
-from ai.bale.notification_bot.logger import Logger
+from ai.bale.notification_bot.models.constants import Command, Attr, ResponseValue, BotMessages, Pattern, \
+    MessageButtonAction, \
+    MimeType, TransferInfo, MsgUID, LogMessage, UserData, Step, Value, SendingAttempt
+from ai.bale.notification_bot.utils.logger import Logger
 from ai.bale.notification_bot.models.base import Base, engine, Session
 from ai.bale.notification_bot.models.message import Message
 from ai.bale.notification_bot.models.notification import Notification
@@ -95,11 +97,13 @@ def generate_receipt_report(peer_id):
 
 
 notification = {}
+in_conversation = False
 
 
 @dispatcher.command_handler([Command.start])
 def conversation_starter(bot, update):
-    global notification
+    global notification, in_conversation
+    in_conversation = True
     notification.clear()
     notification[Attr.peer_id] = update.body.sender_user.peer_id
     notification[Attr.peer_access_hash] = update.body.sender_user.access_hash
@@ -110,7 +114,7 @@ def conversation_starter(bot, update):
                                       MessageButtonAction.default)]
     message = TemplateMessage(general_message=general_message, btn_list=btn_list)
     kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.conversation_starter,
-              UserData.message: message, UserData.attempt:1}
+              UserData.message: message, UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success_callback=success, failure_callback=failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.setup_notification]), ask_time),
@@ -125,12 +129,13 @@ def showing_receipts(bot, update):
         file_id = str(user_data.get(Attr.file_id, None))
         file_url = str(user_data.get(Attr.url))
         my_logger.info(LogMessage.successful_report_upload,
-                       extra={UserData.peer_id: user_peer.peer_id, UserData.file_url: file_url})
+                       extra={UserData.user_id: user_peer.peer_id, UserData.file_url: file_url})
         access_hash = str(user_data.get(Attr.user_id, None))
         doc_message = DocumentMessage(file_id=file_id, access_hash=access_hash, name="purchase_report.csv",
                                       file_size=outfile.__sizeof__(), mime_type=MimeType.csv,
                                       caption_text=TextMessage(BotMessages.receipts_report))
-        kwargs = {UserData.user_peer: user_peer, UserData.doc_message: doc_message, UserData.report_attempt: 1}
+        kwargs = {UserData.user_peer: user_peer, UserData.doc_message: doc_message,
+                  UserData.report_attempt: SendingAttempt.first}
         bot.send_message(doc_message, user_peer, success_callback=receipt_report_success,
                          failure_callback=receipt_report_failure, kwargs=kwargs)
 
@@ -138,7 +143,7 @@ def showing_receipts(bot, update):
         global upload_attempt
         upload_attempt += 1
         if upload_attempt <= Config.reuploading_max_try:
-            bot.upload_file(file="files/{}.csv".format(notification[Attr.peer_id]), file_type="file",
+            bot.upload_file(file="files/{}.csv".format(notification[Attr.peer_id]), file_type=FileType.file,
                             success_callback=file_upload_success,
                             failure_callback=file_upload_failure)
             return
@@ -147,15 +152,18 @@ def showing_receipts(bot, update):
     user_peer = update.get_effective_user()
     outfile = generate_receipt_report(notification[Attr.peer_id])
     upload_attempt = 1
-    bot.upload_file(file="files/{}.csv".format(notification[Attr.peer_id]), file_type="file",
+    bot.upload_file(file="files/{}.csv".format(notification[Attr.peer_id]), file_type=FileType.file,
                     success_callback=file_upload_success,
                     failure_callback=file_upload_failure)
     dispatcher.finish_conversation(update)
+    global in_conversation
+    in_conversation = False
 
 
 def ask_time(bot, update):
     message = TextMessage(BotMessages.ask_time)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "ask_time", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.ask_time,
+              UserData.message: message, UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.persian_datetime), periodic_state),
@@ -165,7 +173,8 @@ def ask_time(bot, update):
 
 def wrong_time(bot, update):
     message = TextMessage(BotMessages.wrong_format)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "wrong_time", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.wrong_time,
+              UserData.message: message, UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.persian_datetime), periodic_state),
@@ -180,7 +189,8 @@ def periodic_state(bot, update):
     btn_list = [TemplateMessageButton(BotMessages.only_once, ResponseValue.only_once, MessageButtonAction.default),
                 TemplateMessageButton(BotMessages.iterative, ResponseValue.iterative, MessageButtonAction.default)]
     message = TemplateMessage(general_message=general_message, btn_list=btn_list)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "periodic_state", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.periodic_state,
+              UserData.message: message, UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success_callback=success, failure_callback=failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.only_once]), ask_type),
@@ -193,8 +203,8 @@ def periodic_state(bot, update):
 
 def wrong_periodic_state(bot, update):
     message = TextMessage(BotMessages.wrong_answer)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "wrong_periodic_state",
-              UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.wrong_periodic_state,
+              UserData.message: message, UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.only_once]), ask_type),
@@ -210,7 +220,8 @@ def period_type(bot, update):
                 TemplateMessageButton(BotMessages.weekly, ResponseValue.weekly, MessageButtonAction.default),
                 TemplateMessageButton(BotMessages.monthly, ResponseValue.monthly, MessageButtonAction.default)]
     message = TemplateMessage(general_message=general_message, btn_list=btn_list)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "period_type", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.period_type,
+              UserData.message: message, UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success_callback=success, failure_callback=failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.daily]), ask_iterate_number),
@@ -223,8 +234,8 @@ def period_type(bot, update):
 
 def wrong_period_type(bot, update):
     message = TextMessage(BotMessages.wrong_answer)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "wrong_period_type",
-              UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.wrong_period_type,
+              UserData.message: message, UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.daily]), ask_iterate_number),
@@ -238,8 +249,8 @@ def wrong_period_type(bot, update):
 def ask_iterate_number(bot, update):
     notification[Attr.periodic_type] = update.get_effective_message().text_message
     message = TextMessage(BotMessages.iterate_number_selection)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "ask_iterate_number",
-              UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.ask_iterate_number,
+              UserData.message: message, UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.number), ask_type),
@@ -250,7 +261,9 @@ def ask_iterate_number(bot, update):
 
 def wrong_iterate_number(bot, update):
     message = TextMessage(BotMessages.wrong_answer_pls_number)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.wrong_iterate_number,
+              UserData.message: message,
+              UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.number), ask_type),
@@ -260,16 +273,18 @@ def wrong_iterate_number(bot, update):
 
 
 def ask_type(bot, update):
-    if notification.get(Attr.iterate_number) is None:
-        notification[Attr.iterate_number] = int(update.get_effective_message().text)
-    else:
+    if notification.get(Attr.periodic_type) is None:
         notification[Attr.iterate_number] = 0
+    else:
+        notification[Attr.iterate_number] = int(update.get_effective_message().text_message)
 
     general_message = TextMessage(BotMessages.notification_type_selection)
     btn_list = [TemplateMessageButton(BotMessages.normal, ResponseValue.normal, MessageButtonAction.default),
                 TemplateMessageButton(BotMessages.debt, ResponseValue.debt, MessageButtonAction.default)]
     message = TemplateMessage(general_message=general_message, btn_list=btn_list)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.ask_type,
+              UserData.message: message,
+              UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success_callback=success, failure_callback=failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.normal]), ask_picture),
@@ -279,7 +294,9 @@ def ask_type(bot, update):
 
 def wrong_type(bot, update):
     message = TextMessage(BotMessages.wrong_answer)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.wrong_type,
+              UserData.message: message,
+              UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.normal]), ask_picture),
@@ -291,7 +308,9 @@ def wrong_type(bot, update):
 def ask_card_number(bot, update):
     notification[Attr.type] = ResponseValue.debt
     message = TextMessage(BotMessages.card_number_entering)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.ask_card_number,
+              UserData.message: message,
+              UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.card_number), ask_amount),
@@ -301,7 +320,9 @@ def ask_card_number(bot, update):
 
 def wrong_card_number(bot, update):
     message = TextMessage(BotMessages.wrong_card_number)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.wrong_card_number,
+              UserData.message: message,
+              UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.card_number), ask_amount),
@@ -312,7 +333,9 @@ def wrong_card_number(bot, update):
 def ask_amount(bot, update):
     notification[Attr.card_number] = update.get_effective_message().text
     message = TextMessage(BotMessages.amount_entering)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.ask_amount,
+              UserData.message: message,
+              UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.number), ask_picture),
@@ -323,7 +346,9 @@ def ask_amount(bot, update):
 
 def wrong_amount(bot, update):
     message = TextMessage(BotMessages.wrong_answer_pls_number)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.wrong_amount,
+              UserData.message: message,
+              UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TextFilter(pattern=Pattern.number), ask_picture),
@@ -341,7 +366,9 @@ def ask_picture(bot, update):
                               btn_list=[
                                   TemplateMessageButton(BotMessages.no_picture_needed, ResponseValue.no_picture,
                                                         MessageButtonAction.default)])
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: UserData.ask_picture,
+              UserData.message: message,
+              UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.no_picture]), ask_text),
@@ -352,7 +379,9 @@ def ask_picture(bot, update):
 
 def wrong_picture(bot, update):
     message = TextMessage(BotMessages.wrong_answer)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.wrong_picture,
+              UserData.message: message,
+              UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update, [
         MessageHandler(TemplateResponseFilter(keywords=[ResponseValue.no_picture]), ask_text),
@@ -366,7 +395,9 @@ def getting_picture(bot, update):
     notification[Attr.file_access_hash] = update.body.message.access_hash
     notification[Attr.file_size] = update.body.message.file_size
     message = TextMessage(BotMessages.notification_text_entering)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.getting_picture,
+              UserData.message: message,
+              UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update,
                                                        [MessageHandler(TextFilter(), finnish_notification_register),
@@ -376,7 +407,9 @@ def getting_picture(bot, update):
 
 def ask_text(bot, update):
     message = TextMessage(BotMessages.notification_text_entering)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.ask_text,
+              UserData.message: message,
+              UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update,
                                                        [MessageHandler(TextFilter(), finnish_notification_register),
@@ -386,7 +419,9 @@ def ask_text(bot, update):
 
 def wrong_name_response(bot, update):
     message = TextMessage(BotMessages.wrong_answer_pls_text)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.wrong_name_response,
+              UserData.message: message,
+              UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.register_conversation_next_step_handler(update,
                                                        [MessageHandler(TextFilter(), finnish_notification_register),
@@ -400,11 +435,12 @@ def finnish_notification_register(bot, update):
                                    notification.get(Attr.type), notification.get(Attr.card_number),
                                    notification.get(Attr.money_amount),
                                    notification.get(Attr.text), notification.get(Attr.file_id),
-                                   notification.get(Attr.file_access_hash))
+                                   notification.get(Attr.file_access_hash),
+                                   notification.get(Attr.file_size))
     session.add(db_notification)
 
     start_datetime = notification[Attr.date_time].togregorian()
-    time_delta = time_delta_func(notification[Attr.periodic_type])
+    time_delta = time_delta_func(notification.get(Attr.periodic_type))
     for i in range(notification[Attr.iterate_number] + 1):
         message = Message(db_notification, sending_time=(start_datetime + time_delta * i))
         session.add(message)
@@ -413,16 +449,26 @@ def finnish_notification_register(bot, update):
                    extra={UserData.user_id: notification[Attr.peer_id], Attr.text: notification[Attr.text],
                           Attr.type: notification[Attr.type]})
     message = TextMessage(BotMessages.successful_notification_registering)
-    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: "", UserData.message: message,UserData.attempt:1}
+    kwargs = {UserData.user_peer: update.get_effective_user(), UserData.step_name: Step.finnish_notification_register,
+              UserData.message: message,
+              UserData.attempt: SendingAttempt.first}
     bot.respond(update, message, success, failure, kwargs=kwargs)
     dispatcher.finish_conversation(update)
+    global in_conversation
+    in_conversation = False
+
+
+@dispatcher.default_handler()
+def default_handler(bot, update):
+    bot.respond(update, BotMessages.pls_use_start)
 
 
 def time_delta_func(type):
     return {
         ResponseValue.daily: datetime.timedelta(days=1),
         ResponseValue.weekly: datetime.timedelta(weeks=1),
-        ResponseValue.monthly: datetime.timedelta(days=30)
+        ResponseValue.monthly: datetime.timedelta(days=30),
+        None: datetime.timedelta(days=0)
     }[type]
 
 
@@ -431,17 +477,17 @@ def handling_bank_message(bot, update):
     if len(update.get_effective_user().peer_id) < 3:  # bot id 2digit
         return
     transfer_info = update.get_effective_message().bank_ext_message.transfer_info.items
-    is_expenditure = transfer_info[TransferInfo.isExpenditure].value.get_json_object()['value']
-    payer = transfer_info[TransferInfo.payer].value.get_json_object()['value']
-    receiver = transfer_info[TransferInfo.receiver].value.get_json_object()['value']
-    description = transfer_info[TransferInfo.description].value.get_json_object()['text']
-    status = transfer_info[TransferInfo.status].value.get_json_object()['text']
-    msgUID = transfer_info[TransferInfo.msgUID].value.get_json_object()['text']
+    is_expenditure = transfer_info[TransferInfo.isExpenditure].value.get_json_object()[Value.value]
+    payer = transfer_info[TransferInfo.payer].value.get_json_object()[Value.value]
+    receiver = transfer_info[TransferInfo.receiver].value.get_json_object()[Value.value]
+    description = transfer_info[TransferInfo.description].value.get_json_object()[Value.text]
+    status = transfer_info[TransferInfo.status].value.get_json_object()[Value.text]
+    msgUID = transfer_info[TransferInfo.msgUID].value.get_json_object()[Value.text]
     random_id = str(msgUID).split("-")[MsgUID.random_id]
     trace_no = None
     if status == TransferInfo.success_status:
-        trace_no = transfer_info[TransferInfo.traceNo].value.get_json_object()['value']
-    purchase_message_date = str(msgUID).split("-")[msgUID.date]
+        trace_no = transfer_info[TransferInfo.traceNo].value.get_json_object()[Value.value]
+    purchase_message_date = str(msgUID).split("-")[MsgUID.date]
     purchased_message = session.query(Message).filter(
         Message.response_date == purchase_message_date).filter(
         Message.random_id == random_id).one()
